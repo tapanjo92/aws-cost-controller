@@ -1,12 +1,19 @@
-import { CostExplorer, Organizations, DynamoDB, EventBridge } from 'aws-sdk';
+import { CostExplorerClient, GetCostAndUsageCommand } from '@aws-sdk/client-cost-explorer';
+import { OrganizationsClient, DescribeOrganizationCommand, ListAccountsCommand } from '@aws-sdk/client-organizations';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
+import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { DateTime } from 'luxon';
 import { Context, ScheduledEvent } from 'aws-lambda';
 
-// Initialize AWS SDK clients
-const ce = new CostExplorer({ region: process.env.AWS_REGION });
-const orgs = new Organizations({ region: process.env.AWS_REGION });
-const dynamodb = new DynamoDB.DocumentClient({ region: process.env.AWS_REGION });
-const eventbridge = new EventBridge({ region: process.env.AWS_REGION });
+// Initialize AWS SDK v3 clients
+const ceClient = new CostExplorerClient({ region: process.env.AWS_REGION });
+const orgsClient = new OrganizationsClient({ region: process.env.AWS_REGION });
+const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
+const eventbridgeClient = new EventBridgeClient({ region: process.env.AWS_REGION });
+const stsClient = new STSClient({ region: process.env.AWS_REGION });
 
 // Types
 interface CostData {
@@ -88,13 +95,13 @@ export const handler = async (event: ScheduledEvent, context: Context): Promise<
 };
 
 // Get all active accounts in the organization
-async function getAllAccounts(): Promise<Organizations.Account[]> {
-  const accounts: Organizations.Account[] = [];
+async function getAllAccounts(): Promise<any[]> {
+  const accounts: any[] = [];
   let nextToken: string | undefined;
   
   try {
     // First, check if we're in an organization
-    const orgInfo = await orgs.describeOrganization().promise();
+    const orgInfo = await orgsClient.send(new DescribeOrganizationCommand({}));
     console.log('Organization info:', orgInfo.Organization);
   } catch (error: any) {
     if (error.code === 'AWSOrganizationsNotInUseException') {
@@ -113,7 +120,7 @@ async function getAllAccounts(): Promise<Organizations.Account[]> {
   
   // List all accounts in the organization
   do {
-    const response = await orgs.listAccounts({ NextToken: nextToken }).promise();
+    const response = await orgsClient.send(new ListAccountsCommand({ NextToken: nextToken }));
     accounts.push(...(response.Accounts || []));
     nextToken = response.NextToken;
   } while (nextToken);
@@ -123,8 +130,7 @@ async function getAllAccounts(): Promise<Organizations.Account[]> {
 
 // Get current account ID
 async function getCurrentAccountId(): Promise<string> {
-  const sts = new (require('aws-sdk').STS)();
-  const identity = await sts.getCallerIdentity().promise();
+  const identity = await stsClient.send(new GetCallerIdentityCommand({}));
   return identity.Account!;
 }
 
@@ -153,25 +159,25 @@ async function collectAccountCosts(
   
   console.log(`Collecting ${granularity} costs for account ${accountId} (${accountName}) from ${start} to ${end}`);
   
-  const params: CostExplorer.GetCostAndUsageRequest = {
+  const params = {
     TimePeriod: { Start: start, End: end },
     Granularity: granularity,
     Metrics: ['UnblendedCost', 'UsageQuantity'],
     GroupBy: [
-      { Type: 'DIMENSION', Key: 'SERVICE' },
-      { Type: 'DIMENSION', Key: 'REGION' },
-      { Type: 'DIMENSION', Key: 'USAGE_TYPE' }
+      { Type: 'DIMENSION' as any, Key: 'SERVICE' },
+      { Type: 'DIMENSION' as any, Key: 'REGION' },
+      { Type: 'DIMENSION' as any, Key: 'USAGE_TYPE' }
     ],
     Filter: {
       Dimensions: {
-        Key: 'LINKED_ACCOUNT',
+        Key: 'LINKED_ACCOUNT' as any,
         Values: [accountId]
       }
     }
   };
   
   try {
-    const result = await retryWithBackoff(() => ce.getCostAndUsage(params).promise());
+    const result = await retryWithBackoff(() => ceClient.send(new GetCostAndUsageCommand(params)));
     
     const costData: CostData[] = [];
     
@@ -242,7 +248,7 @@ async function storeCostData(costData: CostData[]): Promise<void> {
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     
-    const params: DynamoDB.DocumentClient.BatchWriteItemInput = {
+    const params = {
       RequestItems: {
         [process.env.COST_TABLE_NAME!]: chunk.map(item => ({
           PutRequest: {
@@ -269,7 +275,7 @@ async function storeCostData(costData: CostData[]): Promise<void> {
     };
     
     try {
-      await retryWithBackoff(() => dynamodb.batchWrite(params).promise());
+      await retryWithBackoff(() => docClient.send(new BatchWriteCommand(params)));
       console.log(`Stored batch ${i + 1}/${chunks.length} (${chunk.length} items)`);
     } catch (error) {
       console.error(`Failed to store batch ${i + 1}:`, error);
@@ -311,7 +317,7 @@ async function emitCostEvents(costData: CostData[]): Promise<void> {
   
   for (const chunk of eventChunks) {
     try {
-      await eventbridge.putEvents({ Entries: chunk }).promise();
+      await eventbridgeClient.send(new PutEventsCommand({ Entries: chunk }));
     } catch (error) {
       console.error('Failed to emit events:', error);
       // Don't throw here - events are nice to have but not critical
