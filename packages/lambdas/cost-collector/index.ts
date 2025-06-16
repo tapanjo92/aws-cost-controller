@@ -147,13 +147,17 @@ async function collectAccountCosts(
 
   if (config.collectionType === 'hourly') {
     const lookback = config.lookbackHours || 2;
-    start = now.minus({ hours: lookback }).toFormat("yyyy-MM-dd'T'HH':00:00'Z'");
-    end = now.toFormat("yyyy-MM-dd'T'HH':00:00'Z'");
+    const startDate = now.minus({ hours: lookback });
+    const endDate = now;
+    
+    // Format as required by AWS Cost Explorer
+    start = `${startDate.toFormat('yyyy-MM-dd')}T${startDate.toFormat('HH')}:00:00Z`;
+    end = `${endDate.toFormat('yyyy-MM-dd')}T${endDate.toFormat('HH')}:00:00Z`;
     granularity = 'HOURLY';
   } else {
     const lookback = config.lookbackDays || 2;
-    start = now.minus({ days: lookback }).toFormat("yyyy-MM-dd'T'00:00:00'Z'");
-    end = now.toFormat("yyyy-MM-dd'T'00:00:00'Z'");
+    start = now.minus({ days: lookback }).toISODate()!;
+    end = now.toISODate()!;
     granularity = 'DAILY';
   }
 
