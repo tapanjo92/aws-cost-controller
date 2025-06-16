@@ -105,11 +105,14 @@ export class DataPipelineStack extends cdk.Stack {
       },
       logGroup,
       bundling: {
-        minify: true,
+        minify: false, // Don't minify for easier debugging
         sourceMap: true,
         sourcesContent: false,
         target: 'node18',
-        externalModules: ['aws-sdk']
+        // Don't exclude aws-sdk since we're using v2 syntax
+        externalModules: [],
+        nodeModules: ['aws-sdk', 'luxon'],
+        forceDockerBundling: false
       },
       tracing: lambda.Tracing.ACTIVE,
       retryAttempts: 2
