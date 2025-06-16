@@ -9,6 +9,11 @@
     "lint": "eslint . --ext .ts"
   },
   "dependencies": {
+    "@aws-sdk/client-cost-explorer": "^3.828.0",
+    "@aws-sdk/client-dynamodb": "^3.828.0",
+    "@aws-sdk/client-eventbridge": "^3.828.0",
+    "@aws-sdk/client-organizations": "^3.828.0",
+    "@aws-sdk/client-sts": "^3.828.0",
     "aws-sdk": "^2.1400.0",
     "luxon": "^3.3.0"
   },

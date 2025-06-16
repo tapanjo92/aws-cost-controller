@@ -50,7 +50,8 @@ describe('Cost Collector Lambda', () => {
     getRemainingTimeInMillis: () => 30000,
     done: jest.fn(),
     fail: jest.fn(),
-    succeed: jest.fn()
+    succeed: jest.fn(),
+    callbackWaitsForEmptyEventLoop: true
   };
   
   const mockEvent: ScheduledEvent = {
