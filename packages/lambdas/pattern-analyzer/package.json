@@ -1,0 +1,10 @@
+{
+  "name": "pattern-analyzer",
+  "version": "1.0.0",
+  "description": "Cost Pattern Analyzer",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1400.0",
+    "luxon": "^3.3.0"
+  }
+}

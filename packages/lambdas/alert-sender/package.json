@@ -1,0 +1,9 @@
+{
+  "name": "alert-sender",
+  "version": "1.0.0",
+  "description": "Cost Anomaly Alert Sender",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1400.0"
+  }
+}
